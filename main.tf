@@ -91,8 +91,8 @@ resource "aws_security_group_rule" "jenkins_security_group_rule_02" {
 resource "aws_security_group_rule" "jenkins_security_group_rule_03" {
   description              = "HTTP Port for Jenkins server"
   type                     = "ingress"
-  from_port                = "80"
-  to_port                  = "80"
+  from_port                = "8080"
+  to_port                  = "8080"
   protocol                 = "tcp"
   cidr_blocks              = ["0.0.0.0/0"]
   security_group_id        = join("", aws_security_group.jenkins.*.id)
@@ -125,17 +125,35 @@ resource "aws_instance" "jenkins" {
   key_name               = var.key_name
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [aws_security_group.jenkins.id]
-  iam_instance_profile   = var.iam_role
+  #iam_instance_profile   = var.iam_role
   
   user_data = <<-EOF
   #!/bin/bash
   echo "${aws_efs_file_system.default.dns_name}:/ /mnt nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 0 0" | sudo tee -a /etc/fstab
-  sudo mount -a
   echo export SERVER_ENVIRONMENT=${var.SERVER_ENV}  | sudo tee -a /etc/profile
   echo export AWS_REGION=${var.region} | sudo tee -a /etc/profile
   source /etc/profile
+  sudo yum update -y
+  sudo sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+  sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+  sudo yum upgrade
+  sudo amazon-linux-extras install java-openjdk11 -y
+  sudo yum install jenkins -y
+  sleep 200
+  sudo mount -a
+  sudo mkdir /mnt/jenkins
+  sudo chown -R jenkins:jenkins /mnt/jenkins/
+  sudo usermod -d /mnt/jenkins/ jenkins
+  sudo systemctl enable jenkins
+  sleep 10
+  sudo sed 's/\/var\/lib\/jenkins/\/mnt\/jenkins/g' /etc/sysconfig/jenkins
+  sudo sed -i 's/\/var\/lib\/jenkins/\/mnt\/jenkins/g' /usr/lib/systemd/system/jenkins.service
+  sudo systemctl daemon-reload
+  sleep 5
+  sudo systemctl start jenkins
   EOF
 
+  # 
   tags = {
    "Name" = "mm-jenkins-${var.SERVER_ENV}"
     "tr:appFamily" = "mm"
@@ -143,7 +161,7 @@ resource "aws_instance" "jenkins" {
     "tr:environment-type" = var.SERVER_ENV
     "tr:role" = "jenkins-server"
     "ca:owner" = "mm-devops"
-    "cr:contact" = "mm-ipg-devops@clarivate.com"
+    #"cr:contact" = "mm-ipg-devops@clarivate.com"
     "product" = "Mark Monitor"
     "datadog" = "true"
     "env" = var.SERVER_ENV
@@ -153,7 +171,7 @@ resource "aws_instance" "jenkins" {
   root_block_device {
     volume_size = 10
   }
-
+  
   lifecycle {
     create_before_destroy = true
   }
