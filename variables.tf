@@ -76,3 +76,19 @@ variable "vpc_id" {
   type        = string
   description = "VPC ID"
 }
+
+########### Load Balancer Variables #########################
+variable "alb_subnets" {
+  type = list(string)
+  description = "Subnets"
+}
+
+variable "load_balancer_type" {
+  type = string
+  description = "LB Type"
+}
+
+variable "alb_security_groups" {
+  type = list(string)
+  description = "ALB Security Groups"
+}
