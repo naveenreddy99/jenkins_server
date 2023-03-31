@@ -180,3 +180,84 @@ resource "aws_instance" "jenkins" {
   #   command = "aws ec2 wait instance-status-ok --instance-ids ${self.id}"
   # }
 }
+
+
+
+########## Load Balancer ##########
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+resource "aws_lb" "mm-alb-jenkins-ext-01" {
+  name                             = "mm-alb-jenkins-ext-${var.SERVER_ENV}-01"
+  internal                         = false
+  subnets                          = var.alb_subnets
+  load_balancer_type               = var.load_balancer_type
+  ip_address_type                  = "ipv4"
+  security_groups                  = var.alb_security_groups
+  idle_timeout                     = 300
+  enable_deletion_protection       = true
+  drop_invalid_header_fields       = true
+  enable_cross_zone_load_balancing = true
+  # access_logs {
+  #   bucket         = var.logs_bucket_name
+  #   prefix         = ""
+  #   enabled        = true
+      
+  # }
+  tags = {
+    "Name"                = "mm-alb-jenkins-ext-${var.SERVER_ENV}-01",
+    "tr:appFamily"        = "mm",
+    "tr:appName"          = "mm-alb-jenkins-${var.SERVER_ENV}",
+    "tr:environment-type" = "${var.SERVER_ENV}",
+    "tr:role"             = "alb",
+    "ca:owner"            = "mm-devops",
+    "cr:contact"          = "mm-ipg-devops@clarivate.com",
+    "product"             = "MarkMonitor"
+  }
+}
+
+
+resource "aws_lb_target_group" "mm-alb-jenkins-tg-01" {
+  name     = "mm-alb-jenkins-ext-${var.SERVER_ENV}-tg-01"
+  port     = 8080
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
+
+  health_check {
+    healthy_threshold = 2
+    protocol            = "HTTP"
+    interval            = 30
+    port                = "8080"
+    path                = "/login"
+    matcher             = "200-399"
+  }
+  
+  tags = {
+     "Name"                = "mm-alb-jenkins-ext-${var.SERVER_ENV}-tg-01"
+     "tr:appFamily"        = "mm"
+     "tr:appName"          = "mm-alb-jenkins-ext-${var.SERVER_ENV}"
+     "tr:environment-type" = "${var.SERVER_ENV}"
+     "tr:role"             = "target-group"
+     "ca:owner"            = "mm-devops"
+     "ca:contact"          = "mm-ipg-devops@clarivate.com"
+     "product"             = "markmonitor"
+   }
+}
+
+
+resource "aws_lb_listener" "mm_alb_jenkins_HTTP_listener" {
+  load_balancer_arn = aws_lb.mm-alb-jenkins-ext-01.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.mm-alb-jenkins-tg-01.arn
+  }
+}
+
+resource "aws_lb_target_group_attachment" "jenkins_instance_attachment" {
+  target_group_arn = aws_lb_target_group.mm-alb-jenkins-tg-01.arn
+  target_id        = join("", aws_instance.jenkins.*.id) 
+  port             = 8080
+}
